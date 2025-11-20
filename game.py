@@ -82,11 +82,18 @@ class AI(Entity):
 class Player(Entity):
     happiness: float
 
+@dataclass
+class Background():
+    color: str
+    shake: int
+    rect: pygame.Rect
+
 ## Main Game State
 @dataclass
 class Game:
     player: Player
     ai: AI
+    background: Background
     running: bool
     width: int
     height: int
@@ -96,30 +103,33 @@ class Game:
     screen: pygame.surface.Surface
     clock: pygame.time.Clock
 
-## Main Game Setup
+## Game Resolution
 width  = 720
 height = 1280
+
+## Main Game Setup
 player = Player(
     happiness=100.0,
     name=np.random.choice(PLAYER_NAMES),
     position=pygame.Vector2(1, 1),
-    speed=1,
+    speed=0,
     size=60,
     color="green",
 )
+## TODO: reduce modle for lower levels
 model = torch.nn.Sequential(
-    torch.nn.Linear(4, 32),
+    torch.nn.Linear(4, 8),
     torch.nn.ReLU(),
-    torch.nn.Linear(32, 32),
+    torch.nn.Linear(8, 8),
     torch.nn.ReLU(),
-    torch.nn.Linear(32, 2),
+    torch.nn.Linear(8, 2),
     torch.nn.Tanh(),
 )
 ai = AI(
     name ="AI",
     position=pygame.Vector2(360, 640),
     level=100,
-    speed=1,
+    speed=0.6,
     size=120,
     color="red",
     model=model,
@@ -131,6 +141,11 @@ ai = AI(
 game = Game(
     player=player,
     ai=ai,
+    background=Background(
+        color="purple",
+        shake=4,
+        rect=pygame.Rect(0,0,width,height)
+    ),
     width=width,
     height=height,
     running=True,
@@ -140,6 +155,26 @@ game = Game(
     screen=pygame.display.set_mode((width, height)),
     clock=pygame.time.Clock(),
 )
+
+def render_game_scene(game: Game):
+    game.frame += 1
+
+    render_background(game)
+    render_player(game)
+    render_ai(game)
+
+    pygame.display.flip()
+    game.delta = game.clock.tick(60) / 1000
+
+def render_game_over_scene(game: Game):
+    game.screen.fill("black")
+    font = pygame.font.Font(None, 74)
+    text = font.render("Game Over", True, "red")
+    game.screen.blit(text, (game.width // 2 - text.get_width() // 2, game.height // 2 - text.get_height() // 2))
+    pygame.display.flip()
+    pygame.time.delay(3000)
+    game.running = False
+
 
 ## Render Player and AI
 def render_entity(game: Game, entity: Entity):
@@ -175,24 +210,17 @@ def render_ai(game: Game):
 
     render_entity(game, game.ai)
 
-def render_game(game: Game):
-    game.frame += 1
-    game.screen.fill("purple")
-
-    render_player(game)
-    render_ai(game)
-
-    pygame.display.flip()
-    game.delta = game.clock.tick(60) / 1000
-
-def render_game_over(game: Game):
+def render_background(game: Game):
     game.screen.fill("black")
-    font = pygame.font.Font(None, 74)
-    text = font.render("Game Over", True, "red")
-    game.screen.blit(text, (game.width // 2 - text.get_width() // 2, game.height // 2 - text.get_height() // 2))
-    pygame.display.flip()
-    pygame.time.delay(3000)
-    game.running = False
+
+    shake = game.background.shake
+    if shake:
+        game.background.rect.x = np.random.randint(0, shake)
+        game.background.rect.y = np.random.randint(0, shake)
+        game.background.rect.width = game.width - np.random.randint(0, shake)
+        game.background.rect.height = game.height - np.random.randint(0, shake)
+    
+    pygame.draw.rect(game.screen, game.background.color, game.background.rect)
 
 def train(game: Game, features, labels):
     ## TODO consider encoding/decoding inside this function
@@ -240,9 +268,9 @@ while game.running:
             pass
 
         case "play":
-            render_game(game)
+            render_game_scene(game)
 
         case "game_over":
-            render_game_over(game)
+            render_game_over_scene(game)
 
 pygame.quit()
