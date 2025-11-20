@@ -47,7 +47,7 @@ pygame.font.get_init()
 
 PLAYER_NAMES = [
     'QuantifiedQuantum',
-    'Kamala',
+    'Kalamata',
     'Torva',
     'BoboBear',
     'Kevin',
@@ -134,7 +134,7 @@ ai = AI(
     name ="AI",
     position=pygame.Vector2(360, 640),
     level=100,
-    speed=0.6,
+    speed=0.5,
     size=120,
     color="red",
     model=model,
@@ -151,9 +151,7 @@ game = Game(
         shake=0,
         rect=pygame.Rect(0,0,width,height)
     ),
-    #font=pygame.font.SysFont(),
-    #font=pygame.font.SysFont("Arial", 30),
-    font=None,
+    font=pygame.font.SysFont("Arial", 26),
     width=width,
     height=height,
     running=True,
@@ -171,22 +169,18 @@ def collision(game: Game):
         player.position.x,
         player.position.y,
     )
-
-
-    radi = ai.size//2 + player.size//2
-    #print("distance", distance)
-    #print("radi", radi)
+    radi = ai.size + player.size
+    print("distance", distance)
+    print("radi", radi)
     if distance <= radi:
         return True, distance - radi
     else:
         return False, distance - radi
 
 def proximity(x1, y1, x2, y2):
-    xd = abs(x1 - x2)
-    yd = abs(y1 - y2)
-    distance = int(xd + yd)
-
-    return distance
+    xd = (x1 - x2) ** 2
+    yd = (y1 - y2) ** 2
+    return int(np.sqrt(xd + yd))
 
 def render_game_scene(game: Game):
     game.frame += 1
@@ -200,17 +194,22 @@ def render_game_scene(game: Game):
 
 def render_game_over_scene(game: Game):
     game.screen.fill("black")
-    font = pygame.font.Font(None, 74)
-    text = font.render("Game Over", True, "red")
+    text = game.font.render("Game Over", True, "red")
     game.screen.blit(text, (game.width // 2 - text.get_width() // 2, game.height // 2 - text.get_height() // 2))
     pygame.display.flip()
     pygame.time.delay(3000)
-    game.running = False
+    game.state = "play"
 
 ## Render Player and AI
 def render_entity(game: Game, entity: Entity):
+    position = entity.position
     pygame.draw.circle(game.screen, entity.color, entity.position, entity.size)
-    #pygame.draw.text(game.screen, entity.color, entity.position, entity.size)
+
+    text = game.font.render(entity.name, True, "white")
+    game.screen.blit(text, (
+        position.x - text.get_width()  // 2,
+        position.y - text.get_height() // 2,
+    ))
 
 def render_player(game: Game):
     x, y = pygame.mouse.get_pos()
@@ -220,7 +219,7 @@ def render_player(game: Game):
 
     collided, distance = collision(game)
     if 500 >= distance:
-        game.background.shake = (500 - distance) // 10
+        game.background.shake = (500 - distance) // 50
     else:
         game.background.shake = 0
 
@@ -232,6 +231,10 @@ def render_player(game: Game):
         position.y += np.random.randint(-shake, shake)
 
     render_entity(game, game.player)
+
+    collided, distance = collision(game)
+    if collided:
+        game.state = "game over"
 
 def render_ai(game: Game):
     ## Calculate slope for both x and y for AI to Player
@@ -259,13 +262,17 @@ def render_ai(game: Game):
 
 def render_background(game: Game):
     game.screen.fill("black")
-
     shake = game.background.shake
     if shake:
         game.background.rect.x = np.random.randint(0, shake)
         game.background.rect.y = np.random.randint(0, shake)
         game.background.rect.width = game.width - np.random.randint(0, shake)
         game.background.rect.height = game.height - np.random.randint(0, shake)
+    else:
+        game.background.rect.x = 0
+        game.background.rect.y = 0
+        game.background.rect.width = game.width
+        game.background.rect.height = game.height
     
     pygame.draw.rect(game.screen, game.background.color, game.background.rect)
 
@@ -316,7 +323,7 @@ while game.running:
         case "play":
             render_game_scene(game)
 
-        case "game_over":
+        case "game over":
             render_game_over_scene(game)
 
 pygame.quit()
