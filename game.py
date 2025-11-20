@@ -92,6 +92,7 @@ class Game:
     height: int
     state: str # intro, game over, play
     delta: int
+    frame: int
     screen: pygame.surface.Surface
     clock: pygame.time.Clock
 
@@ -117,7 +118,7 @@ model = torch.nn.Sequential(
 ai = AI(
     name ="AI",
     position=pygame.Vector2(360, 640),
-    level=1,
+    level=100,
     speed=1,
     size=120,
     color="red",
@@ -135,6 +136,7 @@ game = Game(
     running=True,
     state="play",
     delta=0,
+    frame=0,
     screen=pygame.display.set_mode((width, height)),
     clock=pygame.time.Clock(),
 )
@@ -168,12 +170,13 @@ def render_ai(game: Game):
     ## Train and get latest directions
     ai_directions = train(game, features, labels)
 
-    game.ai.position.x += (width/2)  * ai_directions[0][0] * game.delta
-    game.ai.position.y += (height/2) * ai_directions[0][1] * game.delta
+    game.ai.position.x += (width/2)  * ai_directions[0][0] * game.delta * game.ai.speed
+    game.ai.position.y += (height/2) * ai_directions[0][1] * game.delta * game.ai.speed
 
     render_entity(game, game.ai)
 
 def render_game(game: Game):
+    game.frame += 1
     game.screen.fill("purple")
 
     render_player(game)
@@ -204,7 +207,9 @@ def train(game: Game, features, labels):
     if len(game.ai.losses) > game.ai.level * 100:
         return output
 
-    print(output)
+    ## Train once every 10 frames
+    if game.frame % 10 > 0:
+        return output
 
     loss = game.ai.loss(output, labels)
     game.ai.losses.append(loss.item())
@@ -213,7 +218,11 @@ def train(game: Game, features, labels):
     loss.backward()
     game.ai.optimizer.step()
 
-    print(f"Loss ({len(game.ai.losses)}:", sum(game.ai.losses) / len(game.ai.losses))
+    ## TODO REMOVE
+    print(
+        f"{len(game.ai.losses)}:",
+        sum(game.ai.losses) / len(game.ai.losses)
+    )
 
     return output
 
@@ -223,7 +232,7 @@ while game.running:
     ## Handle Events
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
-            running = False
+            game.running = False
 
     ## Game State Management
     match game.state:
