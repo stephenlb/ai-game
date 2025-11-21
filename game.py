@@ -209,7 +209,7 @@ def render_game_over_scene(game: Game):
     pygame.display.flip()
 
     ## Restart Game in a few seconds
-    if game.frame > game.game_over_frame + 600:
+    if game.frame > game.game_over_frame + 1200:
         game.state = "play"
         set_level(game, level=1)
 
@@ -290,7 +290,9 @@ def render_background(game: Game):
         game.background.rect.width = game.width
         game.background.rect.height = game.height
     
-    pygame.draw.rect(game.screen, game.background.color, game.background.rect)
+    color = min(shake * 40, 255)
+    bgcolor = (color, 255-color, max(0, 100-color))
+    pygame.draw.rect(game.screen, bgcolor, game.background.rect)
 
 def train(game: Game, features, labels):
     game.ai.optimizer.zero_grad()
