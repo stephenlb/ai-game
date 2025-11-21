@@ -9,9 +9,10 @@ import numpy as np
 
 pygame.init()
 pygame.font.get_init()
+pygame.mixer.init()
 pygame.mixer.music.load("ai.wav")
-pygame.mixer.music.play(loops=-1)
 pygame.mixer.music.set_volume(0.01)
+pygame.mixer.music.play(-1)
 
 ## TODO: SCARY
 ## TODO: as AI gets closer the screen shakes, gets red
