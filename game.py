@@ -11,6 +11,7 @@ PLAYER_NAMES = [
     'QuantifiedQuantum',
     'Kalamata',
     'EmoAImusic',
+    'MD',
     'Torva',
     'Haidar',
     'BoboBear',
@@ -59,16 +60,27 @@ pygame.mixer.music.load("ai.wav")
 pygame.mixer.music.set_volume(0.01)
 pygame.mixer.music.play(-1)
 
-## TODO: SCARY
-## TODO: as AI gets closer the screen shakes, gets red
-## TODO: scary music gets louder as AI gets closer
-## TODO: 
 ## TODO: STORY?
 ## TODO: why is the AI chasing the player? THOR AND HAMMER?
 ## TODO: 
 ## TODO: Max level for winner!!!! 20 levels
 ## TODO:  Imporve font management a font class
 ## TODO: 
+## TODO:  POINT SYSTEM to see how good you did!
+## TODO: 
+## TODO: 
+## TODO: Multiplayer?!?!?!? 
+## TODO: number of active players
+## TODO: 
+## TODO:
+## TODO: special abilities ( extra hits, faster )
+## TODO: 
+## TODO: enemy capabile of fireing weapon
+## TODO: 
+## TODO: instead of cirlcles somethign ELSE!!!
+## TODO:   human / robot / emoji ( and different abilities )
+## TODO: 
+## TODO: square lis like a riot shirled where it gest random boosts
 ## TODO: 
 ## TODO: Ideas
 ## TODO: when you player is captured, next player can be saved
@@ -78,13 +90,8 @@ pygame.mixer.music.play(-1)
 ## TODO: as AI gets closer to player add transparent PULSES PULSES PULSES
 ## TODO: 
 ## TODO: 
-
-## TODO: make AI predict ahead where the player is going
-## TODO: list of names for the plary
 ## TODO: add places to hide
 ## TODO: name the game
-## TODO: make player grow as game difficulty increases
-## TODO: make player slow as game difficulty increases
 
 ## Game Name Ideas
 ## -------------------
@@ -107,6 +114,10 @@ class Entity:
     size: int
     color: Tuple[int, int, int]
     text_color: Tuple[int, int, int]
+
+@dataclass
+class Wall(Entity):
+    pass
 
 @dataclass
 class AI(Entity):
@@ -272,10 +283,12 @@ def render_player(game: Game):
 
     render_entity(game, game.player)
 
-    collided, distance = collision(game)
-    if collided:
-        game.wait_frame = game.frame
-        game.scene = "game over"
+    ## Cooldown invincibility while player get's to safety
+    if game.frame > game.wait_frame + 100:
+        collided, distance = collision(game)
+        if collided:
+            game.wait_frame = game.frame
+            game.scene = "game over"
 
 def render_ai(game: Game):
     ## Calculate slope for both x and y for AI to Player
@@ -297,7 +310,7 @@ def render_ai(game: Game):
     ## Error / Loss / Delta
     cost = sum(game.ai.losses) / (len(game.ai.losses) or 1)
     ai_status = f"""
-AI Cost: (accuracy):   {cost:.4f} 
+AI Cost: (knowledge):  {cost:.4f} 
 Features (input data): {features[0][0]:.4f} 
                        {features[0][1]:.4f} 
                        {features[0][2]:.4f} 
@@ -379,7 +392,9 @@ def train(game: Game, features, labels):
 
 def render_game_scene(game: Game):
     render_background(game)
+
     render_ai(game)
+
     render_player(game)
 
     pygame.display.flip()
@@ -393,6 +408,8 @@ def render_game_over_scene(game: Game):
 
     ## Restart Game in a few seconds
     if game.frame > game.wait_frame + 1200:
+        ## allow player to get away after game over
+        game.wait_frame = game.frame
         game.scene = "play"
         set_level(game, level=1)
 
@@ -404,8 +421,8 @@ def render_level_scene(game):
 
     ## Start Next Level Game in a few seconds
     if game.frame > game.wait_frame + 500:
+        game.wait_frame = game.frame
         game.scene = "play"
-
 
 ## Main Game Loop
 while game.running:
