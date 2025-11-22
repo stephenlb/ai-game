@@ -7,6 +7,51 @@ import pygame.font
 import torch
 import numpy as np
 
+PLAYER_NAMES = [
+    'QuantifiedQuantum',
+    'Kalamata',
+    'EmoAImusic',
+    'Torva',
+    'Haidar',
+    'BoboBear',
+    'Mohamed',
+    'Alucard',
+    'Kevin',
+    'Barry',
+    'Uniqueux',
+    'JanHoleman',
+    'TheJAM',
+    'megansub',
+    'Dereck',
+    'Kyle',
+    'Tuleku',
+    'Travis',
+    'Valor',
+    'Lukey',
+    'Mosh',
+    'Alazr',
+    'Ahmed',
+]
+
+## AI Names
+AI_NAMES = [
+    'HAL9000',
+    'Skynet',
+    'Skynet',
+    'Predator',
+    'DeepBlue',
+    'AlphaGo',
+    'Watson',
+    'Siri',
+    'nAIma',
+    'Aldan',
+    'mAIa',
+    'nAlma',
+    'gAIl',
+    'bAIley',
+    'dAIsy',
+]
+
 pygame.init()
 pygame.font.get_init()
 pygame.mixer.init()
@@ -22,10 +67,15 @@ pygame.mixer.music.play(-1)
 ## TODO: why is the AI chasing the player? THOR AND HAMMER?
 ## TODO: 
 ## TODO: Max level for winner!!!! 20 levels
+## TODO:  Imporve font management a font class
 ## TODO: 
 ## TODO: 
 ## TODO: Ideas
 ## TODO: when you player is captured, next player can be saved
+## TODO: intro a toruch that spreads as visual range like a trianagle as a torch light
+## TODO: WALLS
+## TODO:    like rando blocks to hide behind
+## TODO: as AI gets closer to player add transparent PULSES PULSES PULSES
 ## TODO: 
 ## TODO: 
 
@@ -49,23 +99,6 @@ pygame.mixer.music.play(-1)
 ##
 
 
-PLAYER_NAMES = [
-    'QuantifiedQuantum',
-    'Kalamata',
-    'Torva',
-    'BoboBear',
-    'Kevin',
-    'Barry',
-    'Kyle',
-    'Tuleku',
-    'Travis',
-    'Valor',
-    'Lukey',
-    'Mosh',
-    'Alazr',
-    'Ahmed',
-]
-
 @dataclass
 class Entity:
     name: str
@@ -82,6 +115,7 @@ class AI(Entity):
     learning: int
     optimizer: torch.optim.adamw.AdamW
     loss: torch.nn.modules.loss.MSELoss
+    losses: List
     knowledge: int
 
 @dataclass
@@ -103,11 +137,14 @@ class Game:
     running: bool
     width: int
     height: int
-    state: str # intro, game over, play
+    scene: str # intro, game over, play
     delta: int
     frame: int
-    game_over_frame: int
+    wait_frame: int
     font: pygame.font.Font
+    status_font: pygame.font.Font
+    game_over_font: pygame.font.Font
+    big_font: pygame.font.Font
     screen: pygame.surface.Surface
     clock: pygame.time.Clock
 
@@ -135,7 +172,7 @@ model = torch.nn.Sequential(
     torch.nn.Tanh(),
 )
 ai = AI(
-    name ="AI",
+    name=np.random.choice(AI_NAMES),
     position=pygame.Vector2(360, 640),
     level=1,
     speed=1,
@@ -146,6 +183,7 @@ ai = AI(
     learning=5, # 1 is highest, 10 is lowest
     optimizer=torch.optim.AdamW(model.parameters(), lr=1e-3),
     loss=torch.nn.MSELoss(),
+    losses=[],
     knowledge=0,
 )
 game = Game(
@@ -157,24 +195,30 @@ game = Game(
         rect=pygame.Rect(0,0,width,height)
     ),
     font=pygame.font.SysFont("Arial", 26),
+    status_font=pygame.font.SysFont("Mono", 36),
+    game_over_font=pygame.font.SysFont("Arial", 50),
+    big_font=pygame.font.SysFont("Arial", 300),
     width=width,
     height=height,
     running=True,
-    state="play",
+    scene="play",
     delta=0,
     frame=0,
-    game_over_frame=0,
+    wait_frame=0,
     screen=pygame.display.set_mode((width, height)),
     clock=pygame.time.Clock(),
 )
 
 def set_level(game: Game, level: int):
+    game.player.name   = np.random.choice(PLAYER_NAMES)
+    game.ai.name       = np.random.choice(AI_NAMES)
+
     game.ai.level      = level
     game.ai.knowledge  = 0
     game.ai.speed      = 1 + (level * 0.4)
     game.ai.size       = 120 + (level * 10)
     game.ai.position.x = 360
-    game.ai.position.y = -game.ai.size
+    game.ai.position.y = game.height * 2
 
 def collision(game: Game):
     distance = proximity(
@@ -193,25 +237,6 @@ def proximity(x1, y1, x2, y2):
     xd = (x1 - x2) ** 2
     yd = (y1 - y2) ** 2
     return int(np.sqrt(xd + yd))
-
-def render_game_scene(game: Game):
-    render_background(game)
-    render_player(game)
-    render_ai(game)
-
-    pygame.display.flip()
-    game.delta = game.clock.tick(60) / 1000
-
-def render_game_over_scene(game: Game):
-    game.screen.fill("black")
-    text = game.font.render("Game Over", True, "red")
-    game.screen.blit(text, (game.width // 2 - text.get_width() // 2, game.height // 2 - text.get_height() // 2))
-    pygame.display.flip()
-
-    ## Restart Game in a few seconds
-    if game.frame > game.game_over_frame + 1200:
-        game.state = "play"
-        set_level(game, level=1)
 
 ## Render Player and AI
 def render_entity(game: Game, entity: Entity):
@@ -249,8 +274,8 @@ def render_player(game: Game):
 
     collided, distance = collision(game)
     if collided:
-        game.game_over_frame = game.frame
-        game.state = "game over"
+        game.wait_frame = game.frame
+        game.scene = "game over"
 
 def render_ai(game: Game):
     ## Calculate slope for both x and y for AI to Player
@@ -268,11 +293,36 @@ def render_ai(game: Game):
         game.ai.position.y     / height,
     ]]
 
+    ## Render Text Status of AI Learning cost = sum(game.ai.losses) / (len(game.ai.losses) or 1)
+    ## Error / Loss / Delta
+    cost = sum(game.ai.losses) / (len(game.ai.losses) or 1)
+    ai_status = f"""
+AI Cost: (accuracy):   {cost:.4f} 
+Features (input data): {features[0][0]:.4f} 
+                       {features[0][1]:.4f} 
+                       {features[0][2]:.4f} 
+                       {features[0][3]:.4f} 
+Labels: (output data): {labels[0][0]:.3f} 
+                       {labels[0][1]:.3f} 
+    """
+    text = game.status_font.render(ai_status, True, (0,0,0))
+    game.screen.blit(text, (game.width - 10 - text.get_width(), 10))
+
     ## Train and get latest directions
     ai_directions = train(game, features, labels)
 
     game.ai.position.x += (width/2)  * ai_directions[0][0] * game.delta * game.ai.speed
     game.ai.position.y += (height/2) * ai_directions[0][1] * game.delta * game.ai.speed
+
+    ## Wrap around screen edges
+    if game.ai.position.x < 0:
+        game.ai.position.x = game.width
+    if game.ai.position.x > game.width:
+        game.ai.position.x = 0
+    if game.ai.position.y < 0:
+        game.ai.position.y = game.height
+    if game.ai.position.y > game.height:
+        game.ai.position.y = 0
 
     render_entity(game, game.ai)
 
@@ -290,7 +340,7 @@ def render_background(game: Game):
         game.background.rect.width = game.width
         game.background.rect.height = game.height
     
-    color = min(shake * 40, 255)
+    color = min(shake * 20, 255)
     bgcolor = (color, 255-color, max(0, 100-color))
     pygame.draw.rect(game.screen, bgcolor, game.background.rect)
 
@@ -304,6 +354,8 @@ def train(game: Game, features, labels):
     game.ai.knowledge += 1
     if game.ai.knowledge > game.ai.level * 150:
         set_level(game, game.ai.level + 1)
+        game.wait_frame = game.frame
+        game.scene = "level"
         return output
 
     ## TODO based on level?
@@ -316,14 +368,44 @@ def train(game: Game, features, labels):
     game.ai.optimizer.step()
 
     ## TODO REMOVE
-    #game.ai.losses.append(loss.item())
-    #game.ai.losses = game.ai.losses[-500:]
+    game.ai.losses.append(loss.item())
+    game.ai.losses = game.ai.losses[-500:]
     #print(
     #    f"{len(game.ai.losses)}:",
     #    sum(game.ai.losses) / len(game.ai.losses)
     #)
 
     return output
+
+def render_game_scene(game: Game):
+    render_background(game)
+    render_ai(game)
+    render_player(game)
+
+    pygame.display.flip()
+    game.delta = game.clock.tick(60) / 1000
+
+def render_game_over_scene(game: Game):
+    game.screen.fill("black")
+    text = game.game_over_font.render("Game Over", True, "red")
+    game.screen.blit(text, (game.width // 2 - text.get_width() // 2, game.height // 2 - text.get_height() // 2))
+    pygame.display.flip()
+
+    ## Restart Game in a few seconds
+    if game.frame > game.wait_frame + 1200:
+        game.scene = "play"
+        set_level(game, level=1)
+
+def render_level_scene(game):
+    game.screen.fill("black")
+    text = game.big_font.render(str(game.ai.level), True, (255, 255, 255))
+    game.screen.blit(text, (game.width // 2 - text.get_width() // 2, game.height // 2 - text.get_height() // 2))
+    pygame.display.flip()
+
+    ## Start Next Level Game in a few seconds
+    if game.frame > game.wait_frame + 500:
+        game.scene = "play"
+
 
 ## Main Game Loop
 while game.running:
@@ -334,9 +416,12 @@ while game.running:
 
     ## Game State Management
     game.frame += 1
-    match game.state:
+    match game.scene:
         case "intro":
             pass
+
+        case "level":
+            render_level_scene(game)
 
         case "play":
             render_game_scene(game)
