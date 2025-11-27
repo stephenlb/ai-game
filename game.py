@@ -142,8 +142,16 @@ AI_NAMES = [
 pygame.init()
 pygame.font.get_init()
 pygame.mixer.init()
-pygame.mixer.music.load("ai.wav")
-pygame.mixer.music.set_volume(0.01)
+pygame.mixer.music.load("Level_1.wav")
+## TODO FIX THIS
+## TODO FIX THIS
+## TODO FIX THIS
+## TODO FIX THIS
+pygame.mixer.music.queue("Level_1.wav")
+pygame.mixer.music.queue("Level_2.wav")
+#pygame.mixer.music.queue("Level_3.wav")
+pygame.mixer.music.queue("Level_2.revised.wav")
+pygame.mixer.music.set_volume(0.5)
 pygame.mixer.music.play(-1)
 
 ## TODO: STORY?
@@ -241,6 +249,7 @@ class Game:
     ai: AI
     ghosts: dict
     background: Background
+    bgImage: pygame.surface.Surface
     running: bool
     width: int
     height: int
@@ -260,6 +269,11 @@ class Game:
 width  = 720
 height = 1280
 
+def player_color_name(name: str = None) -> Tuple[int, int, int]:
+    color = sum([ord(c) for c in list(name)])
+    print(color)
+    return (color>>3 , color>>4, color>>5)
+
 ## Main Game Setup
 player = Player(
     userId=str(uuid.uuid4()),
@@ -268,7 +282,7 @@ player = Player(
     position=pygame.Vector2(1, 1),
     speed=0,
     size=60,
-    color=(0, 255, 255),
+    color=player_color_name(np.random.choice(PLAYER_NAMES)),
     text_color=(0, 155, 155),
 )
 ## TODO: reduce modle for lower levels
@@ -307,6 +321,7 @@ game = Game(
         shake=0,
         rect=pygame.Rect(0,0,width,height)
     ),
+    bgImage=pygame.image.load("game-cover.png"),
     font=pygame.font.SysFont("Arial", 26),
     status_font=pygame.font.SysFont("Mono", 36),
     game_over_font=pygame.font.SysFont("Arial", 50),
@@ -325,6 +340,7 @@ game = Game(
 
 def set_level(game: Game, level: int):
     game.player.name   = np.random.choice(PLAYER_NAMES)
+    game.player.color  = player_color_name(game.player.name),
     game.ai.name       = np.random.choice(AI_NAMES)
 
     game.ai.level      = level
@@ -372,10 +388,10 @@ def render_player(game: Game):
     collided, distance = collision(game)
     if 400 >= distance:
         game.background.shake = (400 - distance) // 50
-        pygame.mixer.music.set_volume((400 - distance)/400)
+        #pygame.mixer.music.set_volume((400 - distance)/400)
     else:
         game.background.shake = 0
-        pygame.mixer.music.set_volume(0.01)
+        #pygame.mixer.music.set_volume(0.01)
 
     shake = game.background.shake
     if shake:
@@ -469,6 +485,7 @@ def render_background(game: Game):
     color = min(shake * 20, 255)
     bgcolor = (color, 255-color, max(0, 100-color))
     pygame.draw.rect(game.screen, bgcolor, game.background.rect)
+    game.screen.blit(game.bgImage, (0, 0))
 
 def train(game: Game, features, labels):
     game.ai.optimizer.zero_grad()
