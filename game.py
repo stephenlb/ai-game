@@ -2,10 +2,96 @@
 from dataclasses import dataclass
 from typing import Callable
 
+import uuid
+import requests
+import threading
+import time
+import json
+import queue
 import pygame
 import pygame.font
 import torch
 import numpy as np
+
+player_ghost_in = queue.Queue()
+player_ghost_out = queue.Queue()
+player_ghost_channel = "ghosts"
+def player_ghosts(inQ: queue.Queue, outQ: queue.Queue) -> int:
+    uuid = 'user-' + str(np.random.randint(1,1000000))
+    tt   = '0'
+
+    ## Publish Player Cooridantes
+    while True:
+        try:
+            while not inQ.empty():
+                message = inQ.get()
+                payload = json.dumps(message)
+                publish_url = f'https://ps.pndsn.com/publish/pub-c-ed826874-f30b-4d98-b87a-396accbe7f28/sub-c-8d52d20d-c3a8-4d4b-bed7-5ee42ad6c4a0/0/{player_ghost_channel}/0/{payload}?uuid={uuid}'
+                resp = requests.get(publish_url)
+        except Exception as e:
+            print("Publish Error:", e)
+
+        suburl = f'https://ps.pndsn.com/subscribe/sub-c-8d52d20d-c3a8-4d4b-bed7-5ee42ad6c4a0/{player_ghost_channel}/0/{tt}?uuid={uuid}'
+        try:
+            resp = requests.get(suburl, timeout=1)
+            body = resp.json()
+            tt = body[1]
+            for message in body[0]:
+                outQ.put(message)
+        except Exception as e:
+            continue
+
+        time.sleep(0.0001)
+
+def send_player_coords(userId: str, x: int, y: int):
+    if game.frame % 60 == 0:
+        player_ghost_in.put({'id': userId, 'x': x, 'y': y})
+
+    while not player_ghost_out.empty():
+        ghost = player_ghost_out.get()
+        game.ghosts[ghost['id']] = ghost
+
+    for g in list(game.ghosts.values()):
+        pygame.draw.circle(
+            game.screen,
+            (255, 255, 255),
+            (g['x'], g['y']),
+            game.player.size,
+            4
+        )
+
+outbound_queue = queue.Queue()
+def occupancy(outQ: queue.Queue) -> int:
+    uuid = 'user-' + str(np.random.randint(1,1000000))
+    tt = '0'
+    last_occpuancy = 0
+    while True:
+        ## TODO REMOVE
+        url = f'https://ps.pndsn.com/subscribe/sub-c-8d52d20d-c3a8-4d4b-bed7-5ee42ad6c4a0/ai-game,ai-game-pnpres/0/{tt}?uuid={uuid}'
+        try: 
+            resp = requests.get(url)
+            body = resp.json()
+            tt = body[1]
+            if len(body[0]) and 'occupancy' in body[0][-1]:
+                last_occpuancy = body[0][-1]['occupancy']
+        except Exception as e:
+            continue
+        time.sleep(0.001)
+        outQ.put(last_occpuancy)
+
+## Start occupancy thread
+occupancy_thread = threading.Thread(
+    target=occupancy,
+    args=(outbound_queue,)
+)
+occupancy_thread.start()
+
+## Player Ghost Thread
+player_ghost_thread = threading.Thread(
+    target=player_ghosts,
+    args=(player_ghost_in,player_ghost_out)
+)
+player_ghost_thread.start()
 
 PLAYER_NAMES = [
     'QuantifiedQuantum',
@@ -99,6 +185,7 @@ pygame.mixer.music.play(-1)
 
 ## Game Name Ideas
 ## -------------------
+## AI VS HUMANITY SIMULATOR
 ## AI Terminator
 ## ChAIse
 ## Jury Duty 5
@@ -139,6 +226,7 @@ class AI(Entity):
 @dataclass
 class Player(Entity):
     score: float
+    userId: str
 
 @dataclass
 class Background():
@@ -151,6 +239,7 @@ class Background():
 class Game:
     player: Player
     ai: AI
+    ghosts: dict
     background: Background
     running: bool
     width: int
@@ -165,6 +254,7 @@ class Game:
     big_font: pygame.font.Font
     screen: pygame.surface.Surface
     clock: pygame.time.Clock
+    occupancy: int
 
 ## Game Resolution
 width  = 720
@@ -172,6 +262,7 @@ height = 1280
 
 ## Main Game Setup
 player = Player(
+    userId=str(uuid.uuid4()),
     score=1,
     name=np.random.choice(PLAYER_NAMES),
     position=pygame.Vector2(1, 1),
@@ -209,9 +300,10 @@ ai = AI(
 )
 game = Game(
     player=player,
+    ghosts={},
     ai=ai,
     background=Background(
-        color=(100, 0, 250),
+        color=(0, 0, 0),
         shake=0,
         rect=pygame.Rect(0,0,width,height)
     ),
@@ -228,6 +320,7 @@ game = Game(
     wait_frame=0,
     screen=pygame.display.set_mode((width, height)),
     clock=pygame.time.Clock(),
+    occupancy=0,
 )
 
 def set_level(game: Game, level: int):
@@ -284,8 +377,6 @@ def render_player(game: Game):
         game.background.shake = 0
         pygame.mixer.music.set_volume(0.01)
 
-    print("shake",game.background.shake)
-
     shake = game.background.shake
     if shake:
         position.x += np.random.randint(-shake, shake)
@@ -319,6 +410,7 @@ Labels: (training):    {labels[0][0]:.3f}
 Output: (AI movement): {output[0][0]:.3f} 
                        {output[0][1]:.3f} 
 Score: (Player):       {game.score // 6}
+Occupancy: (Online):   {game.occupancy}
     """
     text = game.status_font.render(ai_status, True, (128,128,128))
     game.screen.blit(text, (game.width - 10 - text.get_width(), 10))
@@ -343,6 +435,7 @@ def render_ai(game: Game):
 
     ## Train and get latest directions
     ai_directions = train(game, features, labels)
+    ai_directions = ai_directions.detach().numpy()
 
     game.ai.position.x += (width/2)  * ai_directions[0][0] * game.delta * game.ai.speed
     game.ai.position.y += (height/2) * ai_directions[0][1] * game.delta * game.ai.speed
@@ -406,10 +499,6 @@ def train(game: Game, features, labels):
     ## TODO REMOVE
     game.ai.losses.append(loss.item())
     game.ai.losses = game.ai.losses[-500:]
-    #print(
-    #    f"{len(game.ai.losses)}:",
-    #    sum(game.ai.losses) / len(game.ai.losses)
-    #)
 
     return output
 
@@ -420,6 +509,7 @@ def render_game_scene(game: Game):
     render_ai(game)
     render_player(game)
 
+    send_player_coords(game.player.userId, game.player.position.x, game.player.position.y)
     pygame.display.flip()
     game.delta = game.clock.tick(60) / 1000
 
@@ -455,6 +545,10 @@ while game.running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             game.running = False
+
+    ## Check occupancy from thread
+    if not outbound_queue.empty():
+        game.occupancy = outbound_queue.get()
 
     ## Game State Management
     game.frame += 1
